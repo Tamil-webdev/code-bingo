@@ -118,6 +118,33 @@ async def list_rounds(
     return response
 
 
+@router.get("/rounds/{round_id}", response_model=RoundResponse)
+async def get_round(
+    round_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get one round's configuration and current status."""
+    result = await db.execute(select(Round).where(Round.id == round_id))
+    r = result.scalar_one_or_none()
+    if not r:
+        raise HTTPException(status_code=404, detail="Round not found")
+
+    participant_count = await db.execute(
+        select(func.count(RoundParticipant.id)).where(RoundParticipant.round_id == r.id)
+    )
+    return RoundResponse(
+        id=str(r.id), tournament_id=str(r.tournament_id),
+        name=r.name, order=r.order, board_size=r.board_size,
+        timer_seconds=r.timer_seconds,
+        difficulty=r.difficulty.value if hasattr(r.difficulty, "value") else str(r.difficulty),
+        num_questions=r.num_questions, qualification_count=r.qualification_count,
+        status=r.status.value, start_time=r.start_time, end_time=r.end_time,
+        actual_start=r.actual_start, actual_end=r.actual_end,
+        participant_count=participant_count.scalar() or 0,
+    )
+
+
 @router.post("/", response_model=TournamentResponse)
 async def create_tournament(
     data: TournamentCreate,
