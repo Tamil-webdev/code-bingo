@@ -109,7 +109,7 @@ async def delete_team(
 ):
     """Delete a team and its associated user account."""
 
-    team_result = await db.execute(select(Team).where(Team.id == tid))
+    team_result = await db.execute(select(Team).where(Team.id == team_id))
     team = team_result.scalar_one_or_none()
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")

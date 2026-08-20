@@ -305,7 +305,10 @@ async def team_dashboard(
 
     # Find active tournament
     t_result = await db.execute(
-        select(Tournament).where(Tournament.status == "active").limit(1)
+        select(Tournament)
+        .where(Tournament.status == "active")
+        .order_by(Tournament.created_at.desc())
+        .limit(1)
     )
     tournament = t_result.scalar_one_or_none()
 
@@ -321,7 +324,7 @@ async def team_dashboard(
         r_result = await db.execute(
             select(Round).where(
                 and_(Round.tournament_id == tournament.id, Round.status == "active")
-            ).limit(1)
+            ).order_by(Round.order.desc()).limit(1)
         )
         round_obj = r_result.scalar_one_or_none()
         if round_obj:
