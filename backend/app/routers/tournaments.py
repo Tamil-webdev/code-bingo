@@ -468,6 +468,7 @@ async def add_teams_to_round(
         raise HTTPException(status_code=404, detail="Round not found")
 
     added = 0
+    added_team_ids: list[UUID] = []
     for tid in team_ids:
         # UUID parsing is already done by FastAPI since we typed team_ids: list[UUID]
 
@@ -487,8 +488,24 @@ async def add_teams_to_round(
                 id=uuid4(), round_id=r.id, team_id=tid,
             ))
             added += 1
+            added_team_ids.append(tid)
 
     await db.flush()
+
+    # An organizer may have started a round before adding teams. Support
+    # joining that live round by creating a board immediately for every team
+    # that was just enrolled.
+    if r.status == RoundStatus.ACTIVE and added_team_ids:
+        from app.services.game_engine import game_engine
+
+        for team_id in added_team_ids:
+            await game_engine.generate_board(
+                db, r.id, team_id, r.board_size,
+                r.difficulty.value if hasattr(r.difficulty, "value") else str(r.difficulty),
+                r.num_questions,
+            )
+        await db.flush()
+
     return {"message": f"Added {added} teams to round"}
 
 

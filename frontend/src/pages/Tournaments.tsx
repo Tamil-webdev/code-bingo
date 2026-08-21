@@ -354,6 +354,14 @@ export const Tournaments: React.FC = () => {
                           {round.status === "active" && (
                             <>
                               <button
+                                onClick={() => handleAddAllTeams(round.id)}
+                                className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded-lg flex items-center gap-1 transition"
+                              >
+                                <UserCheck className="w-3.5 h-3.5" />
+                                Add Registered Teams ({round.participant_count})
+                              </button>
+
+                              <button
                                 onClick={() => handleRoundAction(round.id, "pause")}
                                 className="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold rounded-lg flex items-center gap-1 transition"
                               >
