@@ -23,6 +23,7 @@ interface Round {
 interface Tournament {
   id: string;
   name: string;
+  room_code?: string;
   description: string;
   status: string;
   max_teams: number;
@@ -69,20 +70,20 @@ export const Tournaments: React.FC = () => {
     }
   };
 
-  const fetchTeams = async () => {
+  const fetchTeams = async (tournamentId?: string) => {
     try {
-      const res = await api.get("/api/teams/");
+      const res = await api.get("/api/teams/", { params: tournamentId ? { tournament_id: tournamentId } : undefined });
       setTeamsList(res.data);
     } catch (err) {}
   };
 
   useEffect(() => {
     fetchTournaments();
-    fetchTeams();
   }, []);
 
   const handleSelectTournament = async (t: Tournament) => {
     setActiveTournament(t);
+    fetchTeams(t.id);
     setLoading(true);
     setError("");
     try {
@@ -100,7 +101,7 @@ export const Tournaments: React.FC = () => {
     if (!tName.trim()) return;
 
     try {
-      await api.post("/api/tournaments/", {
+      const created = await api.post("/api/tournaments/", {
         name: tName.trim(),
         description: tDesc.trim() || null,
         max_teams: tMaxTeams,
@@ -113,6 +114,7 @@ export const Tournaments: React.FC = () => {
       setTName("");
       setTDesc("");
       fetchTournaments();
+      alert(`Tournament created. Share this Room ID with participants: ${created.data.room_code}`);
     } catch (err: any) {
       setError(err.response?.data?.detail || "Failed to create tournament");
     }
@@ -265,6 +267,9 @@ export const Tournaments: React.FC = () => {
                 <div>
                   <h2 className="text-xl font-bold text-slate-200">{activeTournament.name}</h2>
                   <p className="text-slate-500 text-sm mt-1">{activeTournament.description}</p>
+                  {activeTournament.room_code && (
+                    <p className="text-amber-400 text-sm font-mono mt-3">Room ID: {activeTournament.room_code}</p>
+                  )}
                 </div>
 
                 <div className="flex gap-3">

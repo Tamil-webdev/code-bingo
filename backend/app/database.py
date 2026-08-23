@@ -4,7 +4,7 @@ Async database engine and session management for SQLAlchemy.
 
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy import text
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 from app.config import settings
 
@@ -45,6 +45,18 @@ async def init_db():
     """Initialize database tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Lightweight compatibility migration for existing local databases.
+        tournament_columns = await conn.run_sync(
+            lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("tournaments")}
+        )
+        if "room_code" not in tournament_columns:
+            await conn.execute(text("ALTER TABLE tournaments ADD COLUMN room_code VARCHAR(12)"))
+        team_columns = await conn.run_sync(
+            lambda sync_conn: {column["name"] for column in inspect(sync_conn).get_columns("teams")}
+        )
+        if "tournament_id" not in team_columns:
+            await conn.execute(text("ALTER TABLE teams ADD COLUMN tournament_id UUID"))
+        await conn.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_tournaments_room_code ON tournaments (room_code)"))
         # SQLite creates the current schema directly. The PostgreSQL migration
         # keeps existing Docker deployments compatible with the Firebase column.
         if conn.dialect.name != "sqlite":

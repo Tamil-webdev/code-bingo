@@ -29,16 +29,18 @@ def generate_password(length: int = 8) -> str:
 
 @router.get("/")
 async def list_teams(
+    tournament_id: Optional[UUID] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all registered teams."""
-    result = await db.execute(
-        select(Team).options(
+    query = select(Team).options(
             selectinload(Team.members),
             selectinload(Team.user)
-        ).order_by(Team.team_name)
     )
+    if tournament_id:
+        query = query.where(Team.tournament_id == tournament_id)
+    result = await db.execute(query.order_by(Team.team_name))
     teams = result.scalars().all()
     return [
         {

@@ -303,13 +303,19 @@ async def team_dashboard(
     if not team:
         raise HTTPException(status_code=404, detail="Team not found")
 
-    # Find active tournament
-    t_result = await db.execute(
-        select(Tournament)
-        .where(Tournament.status == "active")
-        .order_by(Tournament.created_at.desc())
-        .limit(1)
-    )
+    # Room-joined teams always follow the tournament they joined. Legacy teams
+    # keep the previous behavior of following the newest active tournament.
+    if team.tournament_id:
+        t_result = await db.execute(
+            select(Tournament).where(Tournament.id == team.tournament_id)
+        )
+    else:
+        t_result = await db.execute(
+            select(Tournament)
+            .where(Tournament.status == "active")
+            .order_by(Tournament.created_at.desc())
+            .limit(1)
+        )
     tournament = t_result.scalar_one_or_none()
 
     # Find active round
@@ -320,7 +326,7 @@ async def team_dashboard(
     qual_status = "pending"
     remaining = 0
 
-    if tournament:
+    if tournament and tournament.status.value == "active":
         r_result = await db.execute(
             select(Round).where(
                 and_(Round.tournament_id == tournament.id, Round.status == "active")
@@ -328,6 +334,28 @@ async def team_dashboard(
         )
         round_obj = r_result.scalar_one_or_none()
         if round_obj:
+            # Room teams that joined before a round started are enrolled here
+            # as a compatibility fallback, so they never need admin-created
+            # credentials or a manual "add teams" step.
+            if team.tournament_id:
+                participant_result = await db.execute(
+                    select(RoundParticipant.id).where(
+                        RoundParticipant.round_id == round_obj.id,
+                        RoundParticipant.team_id == team.id,
+                    )
+                )
+                if participant_result.scalar_one_or_none() is None:
+                    db.add(RoundParticipant(
+                        id=uuid4(), round_id=round_obj.id, team_id=team.id,
+                    ))
+                    await db.flush()
+                    await game_engine.generate_board(
+                        db, round_obj.id, team.id, round_obj.board_size,
+                        round_obj.difficulty.value if hasattr(round_obj.difficulty, "value") else str(round_obj.difficulty),
+                        round_obj.num_questions,
+                    )
+                    await db.flush()
+
             current_round = round_obj.name
 
             # Get score
@@ -358,7 +386,9 @@ async def team_dashboard(
 
     return TeamDashboardStats(
         team_name=team.team_name,
+        current_tournament_id=str(tournament.id) if tournament else None,
         current_tournament=tournament.name if tournament else None,
+        current_tournament_status=tournament.status.value if tournament else None,
         current_round=current_round,
         current_score=current_score,
         current_rank=current_rank,

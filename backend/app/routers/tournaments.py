@@ -4,6 +4,8 @@ Handles tournament and round CRUD, status management.
 """
 
 from uuid import UUID, uuid4
+import secrets
+import string
 from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -26,6 +28,19 @@ from app.websocket.manager import manager
 router = APIRouter(prefix="/api/tournaments", tags=["Tournaments"])
 
 
+async def generate_room_code(db: AsyncSession) -> str:
+    """Generate a short, human-friendly room ID unique to a tournament."""
+    alphabet = string.ascii_uppercase + string.digits
+    while True:
+        code = "-".join((
+            "".join(secrets.choice(alphabet) for _ in range(3)),
+            "".join(secrets.choice(alphabet) for _ in range(3)),
+        ))
+        existing = await db.execute(select(Tournament.id).where(Tournament.room_code == code))
+        if existing.scalar_one_or_none() is None:
+            return code
+
+
 @router.get("/", response_model=list[TournamentListResponse])
 async def list_tournaments(
     current_user: User = Depends(get_current_user),
@@ -36,9 +51,13 @@ async def list_tournaments(
         select(Tournament).order_by(Tournament.created_at.desc())
     )
     tournaments = result.scalars().all()
+    for tournament in tournaments:
+        if not tournament.room_code:
+            tournament.room_code = await generate_room_code(db)
+    await db.flush()
     return [
         TournamentListResponse(
-            id=str(t.id), name=t.name, description=t.description,
+            id=str(t.id), name=t.name, room_code=t.room_code, description=t.description,
             status=t.status.value, max_teams=t.max_teams,
             num_rounds=t.num_rounds, created_at=t.created_at,
         )
@@ -78,7 +97,7 @@ async def get_tournament(
         ))
 
     return TournamentResponse(
-        id=str(t.id), name=t.name, description=t.description,
+        id=str(t.id), name=t.name, room_code=t.room_code, description=t.description,
         status=t.status.value, registration_start=t.registration_start,
         registration_end=t.registration_end, max_teams=t.max_teams,
         num_rounds=t.num_rounds, rounds=rounds, created_at=t.created_at,
@@ -152,8 +171,10 @@ async def create_tournament(
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new tournament with rounds."""
+    room_code = await generate_room_code(db)
     tournament = Tournament(
         id=uuid4(), name=data.name, description=data.description,
+        room_code=room_code,
         registration_start=data.registration_start,
         registration_end=data.registration_end,
         max_teams=data.max_teams, num_rounds=data.num_rounds,
@@ -184,7 +205,7 @@ async def create_tournament(
     await db.flush()
 
     return TournamentResponse(
-        id=str(tournament.id), name=tournament.name,
+        id=str(tournament.id), name=tournament.name, room_code=tournament.room_code,
         description=tournament.description, status=tournament.status.value,
         registration_start=tournament.registration_start,
         registration_end=tournament.registration_end,
@@ -213,7 +234,7 @@ async def update_tournament(
 
     await db.flush()
     return TournamentListResponse(
-        id=str(t.id), name=t.name, description=t.description,
+        id=str(t.id), name=t.name, room_code=t.room_code, description=t.description,
         status=t.status.value, max_teams=t.max_teams,
         num_rounds=t.num_rounds, created_at=t.created_at,
     )

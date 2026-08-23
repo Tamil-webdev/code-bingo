@@ -9,6 +9,7 @@ import confetti from "canvas-confetti";
 export const TeamDashboard: React.FC = () => {
   const [board, setBoard] = useState<{ id: string; round_id: string; size: number; tiles: Tile[] } | null>(null);
   const [tournamentName, setTournamentName] = useState<string | null>(null);
+  const [tournamentStatus, setTournamentStatus] = useState<string | null>(null);
   const [roundName, setRoundName] = useState("");
   const [score, setScore] = useState(0);
   const [rank, setRank] = useState(0);
@@ -41,17 +42,17 @@ export const TeamDashboard: React.FC = () => {
       setBingoCount(statsRes.data.bingo_count);
       setRemainingTime(statsRes.data.remaining_time);
       setTournamentName(statsRes.data.current_tournament || null);
+      setTournamentStatus(statsRes.data.current_tournament_status || null);
       setRoundName(statsRes.data.current_round || "No Active Round");
       setError("");
 
       // Find active round board if any
       const t_dashboard = statsRes.data;
       if (t_dashboard.current_round) {
-        // Find round details to get ID
-        const tournaments = await api.get("/api/tournaments/");
-        const activeT = tournaments.data.find((t: any) => t.status === "active");
-        if (activeT) {
-          const tDetails = await api.get(`/api/tournaments/${activeT.id}`);
+        // A room-joined team follows its own tournament, not whichever event
+        // happens to be the newest active tournament.
+        if (t_dashboard.current_tournament_id) {
+          const tDetails = await api.get(`/api/tournaments/${t_dashboard.current_tournament_id}`);
           const activeRound = tDetails.data.rounds.find((r: any) => r.status === "active");
           if (activeRound) {
             setRoundActive(true);
@@ -62,6 +63,9 @@ export const TeamDashboard: React.FC = () => {
             setRoundActive(false);
             setBoard(null);
           }
+        } else {
+          setRoundActive(false);
+          setBoard(null);
         }
       } else {
         setRoundActive(false);
@@ -179,7 +183,7 @@ export const TeamDashboard: React.FC = () => {
             Team: <span className="text-amber-500">{user.team_name || "Code Warrior"}</span>
           </h1>
           <p className="text-slate-400 text-sm mt-1 flex items-center gap-2">
-            {tournamentName ? `Active tournament: ${tournamentName}` : "No active tournament"}
+            {tournamentName ? `Tournament: ${tournamentName}` : "No active tournament"}
             <span className="text-slate-600">•</span>
             Current bracket: {roundName}
             <span className={`w-2 h-2 rounded-full ${wsConnected ? "bg-emerald-500 animate-pulse" : "bg-rose-500"}`} title={wsConnected ? "Live Connection Active" : "Disconnected"} />
@@ -255,11 +259,11 @@ export const TeamDashboard: React.FC = () => {
         <div className="p-12 rounded-2xl border border-slate-800/80 bg-slate-900/20 text-center space-y-4 max-w-xl mx-auto">
           <Trophy className="w-16 h-16 text-slate-500/30 mx-auto" />
           <h2 className="text-xl font-bold text-slate-300">
-            {tournamentName ? `${tournamentName} is live` : "Waiting for Round to Start"}
+            {tournamentName ? `${tournamentName} (${tournamentStatus || "waiting"})` : "Waiting for Round to Start"}
           </h2>
           <p className="text-slate-500 text-sm max-w-md mx-auto leading-relaxed">
             {tournamentName
-              ? "The organizer has not started your round yet. Keep this screen open; it will update automatically when the round begins."
+              ? "You have joined this tournament. Keep this screen open; your board will appear automatically when the organizer starts the round."
               : "The organizer has not started a tournament yet. Keep this screen open; it will update automatically when one begins."}
           </p>
         </div>

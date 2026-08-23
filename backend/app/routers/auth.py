@@ -10,11 +10,13 @@ from typing import Optional
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import func, select, or_
 from app.database import get_db
 from app.models.user import User, UserRole
 from app.models.team import Team
-from app.schemas.auth import LoginRequest, TokenResponse, UserResponse, FirebaseAuthRequest, RegisterRequest
+from app.models.tournament import Tournament, TournamentStatus
+from app.models.round import Round, RoundParticipant, RoundStatus
+from app.schemas.auth import LoginRequest, TokenResponse, UserResponse, FirebaseAuthRequest, RegisterRequest, RoomJoinRequest
 from app.utils.auth import verify_password, create_access_token, get_current_user, get_password_hash
 from app.utils.firebase import verify_firebase_id_token
 
@@ -169,6 +171,89 @@ async def register(request: RegisterRequest, db: AsyncSession = Depends(get_db))
     await db.flush()
     db.add(Team(id=uuid4(), user_id=user.id, team_name=team_name, college_name=None))
     await db.flush()
+    return await _issue_token_response(user, db)
+
+
+@router.post("/join-room", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
+async def join_room(request: RoomJoinRequest, db: AsyncSession = Depends(get_db)):
+    """Join a tournament room and receive an immediate team session without credentials."""
+    room_code = request.room_code.strip().upper()
+    team_name = request.team_name.strip()
+    if not room_code or not team_name:
+        raise HTTPException(status_code=400, detail="Room ID and team name are required")
+
+    tournament_result = await db.execute(
+        select(Tournament).where(Tournament.room_code == room_code)
+    )
+    tournament = tournament_result.scalar_one_or_none()
+    if not tournament or tournament.status in {TournamentStatus.COMPLETED, TournamentStatus.CANCELLED}:
+        raise HTTPException(status_code=404, detail="Room not found or no longer accepting teams")
+
+    team_count = await db.execute(
+        select(func.count(Team.id)).where(Team.tournament_id == tournament.id)
+    )
+    if team_count.scalar() >= tournament.max_teams:
+        raise HTTPException(status_code=409, detail="This room is full")
+
+    existing_team = await db.execute(
+        select(Team.id).where(
+            Team.tournament_id == tournament.id,
+            func.lower(Team.team_name) == team_name.lower(),
+        )
+    )
+    if existing_team.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="That team name has already joined this room")
+
+    username = f"room_{tournament.id.hex[:8]}_{uuid4().hex[:8]}"
+    user = User(
+        id=uuid4(), username=username,
+        hashed_password=get_password_hash(secrets.token_urlsafe(32)),
+        role=UserRole.TEAM, is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+    team = Team(
+        id=uuid4(), user_id=user.id, tournament_id=tournament.id,
+        team_name=team_name, college_name=None,
+    )
+    db.add(team)
+    await db.flush()
+
+    # Automatically register a room-joined team for the live round, or for
+    # the first upcoming round when the contest has not started yet.
+    round_result = await db.execute(
+        select(Round)
+        .where(
+            Round.tournament_id == tournament.id,
+            Round.status == RoundStatus.ACTIVE,
+        )
+        .order_by(Round.order.desc())
+        .limit(1)
+    )
+    round_obj = round_result.scalar_one_or_none()
+    if not round_obj:
+        round_result = await db.execute(
+            select(Round)
+            .where(
+                Round.tournament_id == tournament.id,
+                Round.status == RoundStatus.PENDING,
+            )
+            .order_by(Round.order)
+            .limit(1)
+        )
+        round_obj = round_result.scalar_one_or_none()
+    if round_obj:
+        db.add(RoundParticipant(id=uuid4(), round_id=round_obj.id, team_id=team.id))
+        await db.flush()
+        if round_obj.status == RoundStatus.ACTIVE:
+            from app.services.game_engine import game_engine
+            await game_engine.generate_board(
+                db, round_obj.id, team.id, round_obj.board_size,
+                round_obj.difficulty.value if hasattr(round_obj.difficulty, "value") else str(round_obj.difficulty),
+                round_obj.num_questions,
+            )
+            await db.flush()
+
     return await _issue_token_response(user, db)
 
 

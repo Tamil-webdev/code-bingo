@@ -104,6 +104,16 @@ export async function tournamentLogin(username: string, password: string) {
   return response.data;
 }
 
+export async function joinRoom(roomCode: string, teamName: string) {
+  const response = await api.post("/api/auth/join-room", {
+    room_code: roomCode.trim(),
+    team_name: teamName.trim(),
+  });
+  const { access_token, role, team_id, team_name, username } = response.data;
+  saveSession(access_token, { username, role, team_id, team_name });
+  return response.data;
+}
+
 export async function logout() {
   try {
     await api.post("/api/auth/logout");

@@ -23,6 +23,7 @@ class Tournament(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(300), nullable=False)
+    room_code = Column(String(12), unique=True, nullable=True, index=True)
     description = Column(Text, nullable=True)
     status = Column(SAEnum(TournamentStatus), default=TournamentStatus.DRAFT)
     registration_start = Column(DateTime, nullable=True)

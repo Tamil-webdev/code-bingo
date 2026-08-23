@@ -119,7 +119,9 @@ class AdminDashboardStats(BaseModel):
 
 class TeamDashboardStats(BaseModel):
     team_name: str
+    current_tournament_id: Optional[str] = None
     current_tournament: Optional[str] = None
+    current_tournament_status: Optional[str] = None
     current_round: Optional[str] = None
     current_score: int = 0
     current_rank: int = 0

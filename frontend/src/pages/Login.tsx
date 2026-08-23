@@ -11,11 +11,12 @@ import {
 } from "lucide-react";
 import {
   firebaseSignUp,
+  joinRoom,
   tournamentLogin,
 } from "../services/authService";
 import { useAuth } from "../context/AuthContext";
 
-type AuthMode = "signin" | "signup";
+type AuthMode = "room" | "signin" | "signup";
 
 function getFirebaseErrorMessage(code: string): string {
   switch (code) {
@@ -39,12 +40,13 @@ function getFirebaseErrorMessage(code: string): string {
 export const Login: React.FC = () => {
   const navigate = useNavigate();
   const { appUser, loading: authLoading } = useAuth();
-  const [mode, setMode] = useState<AuthMode>("signin");
+  const [mode, setMode] = useState<AuthMode>("room");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [teamName, setTeamName] = useState("");
+  const [roomCode, setRoomCode] = useState("");
   const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -128,6 +130,25 @@ export const Login: React.FC = () => {
     }
   };
 
+  const handleRoomJoin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!roomCode.trim() || !teamName.trim()) return;
+
+    setLoading(true);
+    setError("");
+    try {
+      const data = await joinRoom(roomCode, teamName);
+      redirectByRole(data.role);
+    } catch (err: unknown) {
+      setError(
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+          "Unable to join this room. Check the Room ID and try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
   if (authLoading) {
     return (
       <div className="min-h-screen bg-[#070B13] flex items-center justify-center">
@@ -148,13 +169,30 @@ export const Login: React.FC = () => {
           </div>
           <h1 className="text-2xl md:text-3xl font-extrabold tracking-wide">CODE BINGO</h1>
           <p className="text-slate-400 text-sm">
-            {mode === "signup"
+            {mode === "room"
+              ? "Enter your Room ID to join the tournament"
+              : mode === "signup"
               ? "Create your team account to join tournaments"
               : "Sign in with your tournament credentials"}
           </p>
         </div>
 
         <div className="flex p-1 bg-slate-900/80 border border-slate-800 rounded-xl">
+          <button
+            type="button"
+            onClick={() => {
+              setMode("room");
+              setError("");
+            }}
+            className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-sm font-semibold transition ${
+              mode === "room"
+                ? "bg-amber-500 text-slate-950"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            Join Room
+          </button>
           <button
             type="button"
             onClick={() => {
@@ -183,7 +221,7 @@ export const Login: React.FC = () => {
             }`}
           >
             <UserPlus className="w-4 h-4" />
-            Create Account
+            Register
           </button>
         </div>
 
@@ -192,6 +230,28 @@ export const Login: React.FC = () => {
             <AlertCircle className="w-5 h-5 shrink-0" />
             <span>{error}</span>
           </div>
+        )}
+
+        {mode === "room" && (
+          <form onSubmit={handleRoomJoin} className="space-y-5">
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-400 font-mono tracking-wider uppercase">Room ID</label>
+              <div className="relative">
+                <input type="text" value={roomCode} onChange={(e) => setRoomCode(e.target.value.toUpperCase())} required disabled={loading} placeholder="e.g. ABC-123" className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono transition" />
+                <KeyRound className="absolute left-4 top-3.5 w-4.5 h-4.5 text-slate-500" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-xs font-semibold text-slate-400 font-mono tracking-wider uppercase">Team Name</label>
+              <div className="relative">
+                <input type="text" value={teamName} onChange={(e) => setTeamName(e.target.value)} required disabled={loading} placeholder="e.g. Code Warriors" className="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 focus:outline-none focus:border-amber-500 font-mono transition" />
+                <Users className="absolute left-4 top-3.5 w-4.5 h-4.5 text-slate-500" />
+              </div>
+            </div>
+            <button type="submit" disabled={loading || !roomCode || !teamName} className="w-full py-3.5 bg-amber-500 hover:bg-amber-400 disabled:bg-slate-800 text-slate-950 disabled:text-slate-500 font-bold rounded-xl shadow-lg shadow-amber-500/10 hover:shadow-amber-500/20 transition-all duration-200 active:translate-y-0.5">
+              {loading ? "Joining Room..." : "Join Tournament"}
+            </button>
+          </form>
         )}
 
         {mode === "signin" && (

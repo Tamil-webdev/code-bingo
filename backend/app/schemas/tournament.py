@@ -71,6 +71,7 @@ class TournamentUpdate(BaseModel):
 class TournamentResponse(BaseModel):
     id: str
     name: str
+    room_code: Optional[str] = None
     description: Optional[str] = None
     status: str
     registration_start: Optional[datetime] = None
@@ -87,6 +88,7 @@ class TournamentResponse(BaseModel):
 class TournamentListResponse(BaseModel):
     id: str
     name: str
+    room_code: Optional[str] = None
     description: Optional[str] = None
     status: str
     max_teams: int

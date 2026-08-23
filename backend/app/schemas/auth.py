@@ -21,6 +21,11 @@ class RegisterRequest(BaseModel):
     team_name: str
 
 
+class RoomJoinRequest(BaseModel):
+    room_code: str
+    team_name: str
+
+
 class TokenResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
