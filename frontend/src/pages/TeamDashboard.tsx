@@ -134,6 +134,17 @@ export const TeamDashboard: React.FC = () => {
     };
   }, []);
 
+  // The server supplies the authoritative remaining time when the dashboard
+  // loads. Keep the visible countdown moving between refreshes; WebSocket
+  // timer messages, when present, still replace this value.
+  useEffect(() => {
+    if (!roundActive || remainingTime <= 0) return;
+    const timer = window.setInterval(() => {
+      setRemainingTime((seconds) => Math.max(0, seconds - 1));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [roundActive, remainingTime > 0]);
+
   const handleTileClick = (tile: Tile) => {
     if (!roundActive || remainingTime <= 0) {
       alert("The round is not active!");

@@ -10,7 +10,7 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from app.models.board import Board, BoardTile, TileStatus
-from app.models.question import Question, QuestionDifficulty
+from app.models.question import Question, QuestionDifficulty, QuestionOption
 from app.models.attempt import Attempt
 from app.models.score import Score
 from app.models.leaderboard import LeaderboardEntry
@@ -102,8 +102,29 @@ class GameEngine:
         result = await db.execute(select(Question).where(Question.id == tile.question_id))
         question = result.scalar_one()
 
-        # Check if answer is correct (case-insensitive comparison)
-        is_correct = submitted_answer.strip().lower() == question.correct_answer.strip().lower()
+        # Multiple-choice screens submit an option label (for example, "A"),
+        # while the seed data stores the full answer text on the question.
+        # Resolve the label through QuestionOption, while accepting full text
+        # too for imported questions and typed-answer question types.
+        normalized_answer = submitted_answer.strip().casefold()
+        normalized_correct_answer = question.correct_answer.strip().casefold()
+        is_correct = normalized_answer == normalized_correct_answer
+
+        if not is_correct:
+            option_result = await db.execute(
+                select(QuestionOption).where(QuestionOption.question_id == question.id)
+            )
+            options = option_result.scalars().all()
+            selected_option = next(
+                (
+                    option for option in options
+                    if option.option_label.strip().casefold() == normalized_answer
+                    or option.option_text.strip().casefold() == normalized_answer
+                ),
+                None,
+            )
+            if selected_option:
+                is_correct = selected_option.is_correct
 
         # Calculate points
         points = 0

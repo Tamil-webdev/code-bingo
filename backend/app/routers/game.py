@@ -87,10 +87,20 @@ async def get_tile_question(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the question for a specific tile (without revealing the answer)."""
-    tile_result = await db.execute(select(BoardTile).where(BoardTile.id == tile_id))
+    team_result = await db.execute(select(Team).where(Team.user_id == current_user.id))
+    team = team_result.scalar_one_or_none()
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    tile_result = await db.execute(
+        select(BoardTile).options(selectinload(BoardTile.board)).where(BoardTile.id == tile_id)
+    )
     tile = tile_result.scalar_one_or_none()
     if not tile:
         raise HTTPException(status_code=404, detail="Tile not found")
+
+    if tile.board.team_id != team.id:
+        raise HTTPException(status_code=403, detail="This question does not belong to your team")
 
     if tile.status != TileStatus.UNANSWERED:
         raise HTTPException(status_code=400, detail="This question has already been answered")
@@ -124,6 +134,11 @@ async def submit_answer(
     db: AsyncSession = Depends(get_db),
 ):
     """Submit an answer for a tile."""
+    try:
+        tile_id = UUID(data.tile_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid question tile")
+
     # Get team
     team_result = await db.execute(select(Team).where(Team.user_id == current_user.id))
     team = team_result.scalar_one_or_none()
@@ -133,11 +148,17 @@ async def submit_answer(
     # Get tile
     tile_result = await db.execute(
         select(BoardTile).options(selectinload(BoardTile.board))
-        .where(BoardTile.id == data.tile_id)
+        .where(BoardTile.id == tile_id)
     )
     tile = tile_result.scalar_one_or_none()
     if not tile:
         raise HTTPException(status_code=404, detail="Tile not found")
+
+    # Never allow a team to submit an answer against another team's board.
+    # This also prevents stale browser state from causing an opaque server
+    # error after the participant joins a room.
+    if tile.board.team_id != team.id:
+        raise HTTPException(status_code=403, detail="This question does not belong to your team")
 
     if tile.status != TileStatus.UNANSWERED:
         raise HTTPException(status_code=400, detail="This question has already been answered")

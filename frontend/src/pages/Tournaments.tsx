@@ -81,6 +81,24 @@ export const Tournaments: React.FC = () => {
     fetchTournaments();
   }, []);
 
+  // Room joins happen from another browser/device. Refresh the selected
+  // contest's team roster and participant counts without requiring admin to
+  // reload the page.
+  useEffect(() => {
+    if (!activeTournament) return;
+    const refreshRoomTeams = async () => {
+      await fetchTeams(activeTournament.id);
+      try {
+        const response = await api.get(`/api/tournaments/${activeTournament.id}`);
+        setRounds(response.data.rounds || []);
+      } catch {
+        // Keep the last valid admin view if a transient request fails.
+      }
+    };
+    const interval = window.setInterval(refreshRoomTeams, 3000);
+    return () => window.clearInterval(interval);
+  }, [activeTournament?.id]);
+
   const handleSelectTournament = async (t: Tournament) => {
     setActiveTournament(t);
     fetchTeams(t.id);
